@@ -1,0 +1,507 @@
+<html>
+
+
+<head>
+  <meta charset="UTF-8">
+  <title>HERD Federal Funding per Scientific Field</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+    }
+
+    header {
+      width: 100%;
+      background-color: #333;
+      color: white;
+      padding: 20px;
+      text-align: center;
+    }
+
+    .top-text {
+      width: 100%;
+      padding: 10px 20px;
+      background-color: #f4f4f4;
+      box-sizing: border-box;
+    }
+
+    .main-content {
+      display: flex;
+      padding: 20px;
+      box-sizing: border-box;
+    }
+
+    .charts {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .chart {
+      width: 800px;
+      height: 400px;
+      background-color: #e0e0e0;
+      border: 1px solid #ccc;
+    }
+
+    .annotation {
+      margin-left: 20px;
+      width: 300px;
+      background-color: #fafafa;
+      padding: 10px;
+      border: 1px solid #ddd;
+    }
+  </style>
+</head>
+
+
+
+
+
+<div id="tooltip" style="position: absolute; visibility: hidden; background: white; border: 1px solid #ccc; padding: 5px; font-size: 12px;"></div>
+
+<script src='https://d3js.org/d3.v5.min.js'></script>
+
+ <style>
+    svg {
+      font: 10px sans-serif;
+    }
+    .line {
+      fill: none;
+      stroke-width: 2px;
+    }
+    .axis-label {
+      font-weight: bold;
+    }
+  </style>
+
+
+<!-- Load color palettes -->
+<script src="https://d3js.org/d3-scale-chromatic.v1.min.js"></script>
+
+<title>Federal Funding by Field</title>
+<body onload='init()'>
+
+    <div id="tooltip" style="position: absolute; visibility: hidden; background: lightgray; padding: 5px; border-radius: 4px;"></div>
+
+    <header>
+        <h1>Higher Education Scientific Funding by Field of Science</h1>
+    </header>
+
+    <div class="top-text">
+        <p>The top chart show how much funding was by provided by each federal agency for the selected scientific field.</p>
+        <p>The bottom chart shows the percentage change in funding using 2013 as the baseline year.</p>
+        <p>- You can mouseover a specific line on the chart to highlight and identify the agency for that line.</p>
+        <p>- You can use the dropdown to examine a different scientific field.</p>
+    </div>
+    <div>
+        <p>
+            <a href="file:///Users/andy/Assignments/DataViz/Activities/Final_Project/main.html" title="Go to Home">
+            Back to Home
+            </a>
+        </p>
+    </div>
+    <div id="dropdown-container"></div>
+    <div class="main-content">
+        <div class="charts">
+        <div id="funding_by_agency" class="chart">
+            <svg id="svg_funding_by_agency" width=800 height=400></svg>
+        </div>
+        <div id="pct_change" class="chart">
+            <svg id="svg_pct_change" width=800 height=400></svg>
+        </div>
+        </div>
+        <div class="annotation" id="note">
+        <h3>Annotations</h3>
+        <p>Details or notes related to the charts go here.</p>
+        </div>
+    </div>
+
+
+    <p id="output"></p>
+
+    <div>
+    <!--<svg width=800 height=800> 
+    </svg>-->
+    </div>
+    <!--
+    <div id="funding_by_agency">
+        <svg id="svg_funding_by_agency" width=800 height=400></svg>
+    </div>
+    <div id="pct_change">
+        <svg id="svg_pct_change" width=800 height=400></svg>
+    </div>
+    -->
+<script>
+async function init() {
+
+    // Get the URL parameters
+    const params = new URLSearchParams(window.location.search);
+    const field = params.get('field'); // 'name' is the parameter key
+
+/*
+    // Print to the screen
+    if (field) {
+      document.getElementById('output').innerText = `Field: ${field}!`;
+    } else {
+      document.getElementById('output').innerText = "No name parameter found.";
+    }
+*/
+    // host URL
+    const url = 'file:///Users/andy/Assignments/DataViz/Activities/Final_Project'
+
+    // read data
+    data = await d3.csv("https://raw.githubusercontent.com/arr11-uiuc/dv/refs/heads/main/data/field_agency_by_year.csv");
+    data = data.filter(d => d.agency !== "Total");
+    data.forEach(d => d.funding_cy = +d.funding_cy);
+    data.forEach(d => d.dif_pct_13 = +d.dif_pct_13 * 100.0000);
+
+    // setup dimensions
+    svg_width = 800;
+    svg_height = 400;
+
+    const margin = {top:20, right:75, bottom: 50, left: 75};
+    width = svg_width - margin.right - margin.left;
+    height = svg_height - margin.top - margin.bottom;
+
+    const fields = d3.map(data, function(d){return d.field;}).keys()
+    const years = d3.map(data, function(d){return d.report_year_cy;}).keys()
+    const agencies = d3.map(data, function(d){return d.agency;}).keys()
+
+    var filteredData
+  
+    // Select the container and append a select element
+    const dropdown = d3.select("#dropdown-container")
+      .append("select")
+      .attr("id", "fieldDropdown");
+  
+    // Bind data and create options
+    dropdown.selectAll("option")
+      .data(fields)
+      .enter()
+      .append("option")
+      .text(d => d)
+      .attr("value", d => d);
+
+    // Add event listener
+    dropdown.on("change", function() {
+      const field = d3.select(this).property("value");
+      //d3.select("#selected-value").text(`You selected: ${field}`);
+      updateChart(field);
+    });
+
+    // Set dropdown value to URL parameter if it exists
+    if (field && fields.includes(field)) {
+      dropdown.property("value", field);
+      updateChart(field);
+    }
+
+    
+    // create line chart
+    function updateChart(field){
+        console.log("updateChart: "+ field)
+        var svg = d3.select("#svg_funding_by_agency")
+        //    .append("svg")
+            .attr("width", svg_width)
+            .attr("height", svg_height)
+
+        var svg2 = d3.select("#svg_pct_change")
+         //   .append("svg")
+            .attr("width", svg_width)
+            .attr("height", svg_height)
+
+        // Blank out existing chart
+        svg.selectAll("g").remove();
+        svg2.selectAll("g").remove();
+
+        // create nested data
+        var filteredData = data.filter(d => d.field === field);
+        var nestedData = d3.nest()
+            .key(d => d.agency)
+            .entries(filteredData)
+
+        // scales
+        var xScale = d3.scaleBand()
+            .domain(years)
+            .range([0, width])
+
+        var yScale = d3.scaleLinear()
+            .domain([0, d3.max(filteredData, d => d.funding_cy)])
+            .range([height, 0])
+
+        var yScale2 = d3.scaleLinear()
+            .domain([d3.min(filteredData, d => d.dif_pct_13), d3.max(filteredData, d => d.dif_pct_13)])
+            .range([height, 0])
+
+        // Axes
+        var xAxis = d3.axisBottom(xScale)
+            .tickFormat(d3.format("d"));
+
+        var yAxis = d3.axisLeft(yScale)
+        var yAxis2 = d3.axisLeft(yScale2)
+
+        // Line
+        const line = d3.line()
+            .x(d => xScale(d.report_year_cy))
+            .y(d => yScale(d.funding_cy));
+        const line2 = d3.line()
+            .x(d => xScale(d.report_year_cy))
+            .y(d => yScale2(d.dif_pct_13));
+
+        // chart1
+        var g = svg.append("g").attr("transform", `translate(${margin.left},${margin.top})`);
+    
+        g.append("g")
+        .attr("transform", `translate(0,${height})`)
+        .call(xAxis)
+        .append("text")
+        .attr("fill", "#000")
+        .attr("x", width / 2)
+        .attr("y", 40)
+        .attr("class", "axis-label")
+        .text("Year")
+        .attr("font-size", "12px");
+
+        g.append("g")
+        .call(yAxis)
+        .append("text")
+        .attr("fill", "#000")
+        .attr("transform", "rotate(-90)")
+        .attr("y", -65)
+        .attr("x", -height / 3)
+        .attr("dy", "0.71em")
+        .attr("class", "axis-label")
+        .text("Funding (in $1000s)")
+        .attr("font-size", "12px");
+    
+
+        // Color scale
+        const color = d3.scaleOrdinal(d3.schemeCategory10);
+        const color2 = d3.scaleOrdinal(d3.schemeCategory10);
+
+        // Draw lines
+        nestedData.forEach((agency, i) => {
+        g.append("path")
+            .datum(agency.values)
+            .attr("class", "line")
+            .attr("d", line)
+            .attr("stroke", color(agency.key))
+            .attr("data-agency", agency.key)
+            .attr("fill", "none")
+            .attr("stroke-width", 3);
+
+        // Add label
+        const last = agency.values[agency.values.length - 1];
+        g.append("text")
+            .attr("transform", `translate(${xScale(last.report_year_cy)},${yScale(last.funding_cy)})`)
+            .attr("x", 5)
+            .attr("dy", "0.35em")
+            .style("font", "12px sans-serif")
+            .attr("stroke", color(agency.key))
+            .text(agency.key);
+
+        });
+
+     /*
+        d3.selectAll(".line")
+        .on("mouseover", function(d) {
+            const hoveredAgency = d3.select(this).attr("data-agency");
+
+            // Fade all lines
+            d3.selectAll(".line")
+            .transition().duration(200)
+            .style("opacity", 0.4);
+
+            // Highlight hovered line
+            d3.select(this)
+            .transition().duration(200)
+            .style("opacity", 1)
+            .attr("stroke-width", 4);
+         
+        // Show tooltip
+        d3.select("#tooltip")
+        .style("visibility", "visible")
+        .text(`Agency: ${hoveredAgency}`);
+        })
+        .on("mousemove", function() {
+            d3.select("#tooltip")
+            .style("top", (d3.event.pageY - 10) + "px")
+            .style("left", (d3.event.pageX + 10) + "px");
+        })
+        .on("mouseout", function() {
+            // Reset all lines
+            d3.selectAll(".line")
+            .transition().duration(200)
+            .style("opacity", 1)
+            .attr("stroke-width", 3);
+
+            // Hide tooltip
+            d3.select("#tooltip")
+            .style("visibility", "hidden");
+        });
+*/
+
+
+        // chart2
+        var g2= svg2.append("g").attr("transform", `translate(${margin.left},${margin.top})`);
+    
+        g2.append("g")
+        .attr("transform", `translate(0,${height})`)
+        .call(xAxis)
+        .append("text")
+        .attr("fill", "#000")
+        .attr("x", width / 2)
+        .attr("y", 40)
+        .attr("class", "axis-label")
+        .text("Year") 
+        .attr("font-size", "12px");
+
+        g2.append("g")
+        .call(yAxis2)
+        .append("text")
+        .attr("fill", "#000")
+        .attr("transform", "rotate(-90)")
+        .attr("y", -65)
+        .attr("x", -height / 5)
+        .attr("dy", "0.71em")
+        .attr("class", "axis-label")
+        .text("Percent Change in Funding since 2013")
+        .attr("font-size", "12px");
+    
+
+        // Draw lines
+        nestedData.forEach((agency, i) => {
+            g2.append("path")
+                .datum(agency.values)
+                .attr("class", "line")
+                .attr("d", line2)
+                .attr("stroke", color2(agency.key))
+                .attr("data-agency", agency.key)
+                .attr("fill", "none")
+                .attr("stroke-width", 3);
+
+            // Add label
+            const last = agency.values[agency.values.length - 1];
+            g2.append("text")
+                .attr("transform", `translate(${xScale(last.report_year_cy)},${yScale2(last.dif_pct_13)})`)
+                .attr("x", 5)
+                .attr("dy", "0.35em")
+                .style("font", "12px sans-serif")
+                .attr("stroke", color2(agency.key))
+                .text(agency.key);
+
+        });
+
+        d3.selectAll(".line")
+        .on("mouseover", function(d) {
+            const hoveredAgency = d3.select(this).attr("data-agency");
+
+            // Fade all lines
+            d3.selectAll(".line")
+            .transition().duration(200)
+            .style("opacity", 0.4);
+
+            // Highlight hovered line
+            d3.select(this)
+            .transition().duration(200)
+            .style("opacity", 1)
+            .attr("stroke-width", 4);
+         
+        // Show tooltip
+        d3.select("#tooltip")
+        .style("visibility", "visible")
+        .text(`Agency: ${hoveredAgency}`);
+        })
+        .on("mousemove", function() {
+            d3.select("#tooltip")
+            .style("top", (d3.event.pageY - 10) + "px")
+            .style("left", (d3.event.pageX + 10) + "px");
+        })
+        .on("mouseout", function() {
+            // Reset all lines
+            d3.selectAll(".line")
+            .transition().duration(200)
+            .style("opacity", 1)
+            .attr("stroke-width", 3);
+
+            // Hide tooltip
+            d3.select("#tooltip")
+            .style("visibility", "hidden");
+        });
+
+
+        // Update annotation
+        var annotation_text = 'Annotation text';
+        var annotation_url = '';
+        var annotation_link = 'Learn More';
+
+        if(field == 'Computer and information sciences') {
+            annotation_text = 'In 2020, the USDA made a significant investment in modernizing IT infrastructure.';
+            annotation_url = 'https://www.usda.gov/sites/default/files/documents/fy2020-apr.pdf'
+            annotation_link = 'USDA FY 2020 Annual Performance Report'
+        }
+
+        if(field == 'Engineering') {
+            annotation_text = 'Programs like the Network and Information Technology Research and Development (NITRD) and the National Artificial Intelligence Initiative saw increased funding to support cross-cutting engineering and IT research. These initiatives involved over 60 federal agencies and focused on areas too complex for any single agency to tackle alone.';
+            annotation_url = 'https://federalbudgetiq.com/insights/federal-ai-and-it-research-and-development-spending-analysis/'
+            annotation_link = 'Federal AI and IT Research and Development Spending Analysis'
+        }
+
+        if(field == 'Life sciences') {
+            annotation_text = 'The National Institute of Health (NIH) funeded research on cancer, long COVID, and personalized medical care.';
+            annotation_url = 'https://grants.nih.gov/news-events/nih-extramural-nexus-news'
+            annotation_link = 'NIH Extrammural Nexus'
+        }
+
+        if(field == 'Mathematics and statistics') {
+            annotation_text = 'NASA increased investment into AI and Machine learning to aid in climate modeling and preparing for a mission to Mars.';
+            annotation_url = 'https://nasawatch.com/budget/a-closer-look-at-nasas-fy-2021-budget/'
+            annotation_link = 'A Closer Look at NASA 2021 Budget'
+        }
+
+        if(field == 'Non-S&E') {
+            annotation_text = 'In 2015, the USDA increased funding to strengthen rural America.  ';
+            annotation_url = 'https://www.usda.gov/about-usda/news/blog/usda-investments-make-big-impact-rural-america'
+            annotation_link = 'USDA Blog - USDA Investments Make Big Impact in Rural America'
+        }
+
+        if(field == 'Other sciences') {
+            annotation_text = 'NASA increased investment in Advancing Collaborative Connections for Earth System Science (ACCESS).  ACCESS is comprised of Earth observations for scientific and research applications.';
+            annotation_url = 'https://www.earthdata.nasa.gov/about/competitive-programs/access'
+            annotation_link = 'NASA EarthDATA'
+        }
+
+        if(field == 'Physical sciences') {
+            annotation_text = 'In 2020, USDA funded research in soil, water, and plant systems and infrastructure for labs and field stations.';
+            annotation_url = 'https://www.congress.gov/crs_external_products/R/PDF/R45974/R45974.8.pdf'
+            annotation_link = 'Congressional Research Service GY 2020 Appropriations'
+        }
+
+        if(field == 'Psychology') {
+            annotation_text = 'HHS conducts research into identification, treatments, and interventions regarding mental discorders';
+            annotation_url = 'https://www.hhs.gov/programs/social-services/homelessness/research/index.html'
+            annotation_link = 'HHS - Research'
+        }
+
+        if(field == 'Social sciences') {
+            annotation_text = 'Social Science research includes the behavior response to the COVID-19 pandemic and gig economy employment dynamics.';
+            annotation_url = 'https://www.forbes.com/sites/michaeltnietzel/2025/01/02/herd-survey-ranks-top-us-colleges-in-social-science-research-spending/'
+            annotation_link = 'Forbes - HERD Survey Ranks Top U.S. Colleges In Social Science Research Spending'
+        }
+
+
+        document.getElementById('note').innerHTML = `<h3>${field}</h3>
+            <p>${annotation_text}</p>
+            <a href=${annotation_url} target="_blank">${annotation_link}</a>
+        `;
+
+    }
+
+
+
+}
+
+
+</script>
+</body>
+</html>
